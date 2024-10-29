@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
-import { PostgrestSingleResponse } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
@@ -17,18 +16,19 @@ export async function POST(request: Request) {
     currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
     currentWeekStart.setHours(0, 0, 0, 0);
 
-    let { data: recordData, error: recordError } = await supabase
+    const { data: recordData, error: fetchError } = await supabase
       .from('work_records')
       .select('*')
       .eq('user_id', userId)
       .eq('week_start', currentWeekStart.toISOString())
       .single();
 
-    if (recordError && recordError.code !== 'PGRST116') {
-      throw recordError;
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      throw fetchError;
     }
 
-    if (!recordData) {
+    let currentRecordData = recordData;
+    if (!currentRecordData) {
       const { data: newRecord, error: insertError } = await supabase
         .from('work_records')
         .insert({
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         .single();
 
       if (insertError) throw insertError;
-      recordData = newRecord;
+      currentRecordData = newRecord;
     }
 
     const clockTime = manualTime ? new Date(manualTime) : new Date();
@@ -55,15 +55,15 @@ export async function POST(request: Request) {
           last_clock_in: clockTime.toISOString(),
           last_clock_in_time: clockTime.toTimeString().split(' ')[0]
         })
-        .eq('id', recordData.id);
+        .eq('id', currentRecordData.id);
 
       if (error) throw error;
     } else if (action === '퇴근' || action === '퇴근 시간 입력') {
-      if (!recordData.last_clock_in) {
+      if (!currentRecordData.last_clock_in) {
         return NextResponse.json({ error: '출근 기록이 없습니다.' }, { status: 400 });
       }
 
-      const lastClockIn = new Date(recordData.last_clock_in);
+      const lastClockIn = new Date(currentRecordData.last_clock_in);
       if (clockTime <= lastClockIn) {
         return NextResponse.json({ 
           error: '퇴근 시간은 출근 시간보다 이후여야 합니다.' 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       }
 
       const workDuration = Math.floor((clockTime.getTime() - lastClockIn.getTime()) / (1000 * 60));
-      const newTotalWorkTime = recordData.total_work_time + workDuration;
+      const newTotalWorkTime = currentRecordData.total_work_time + workDuration;
       const newRemainingTime = Math.max(0, 1200 - newTotalWorkTime);
 
       const { error } = await supabase
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
           total_work_time: newTotalWorkTime,
           remaining_time: newRemainingTime
         })
-        .eq('id', recordData.id);
+        .eq('id', currentRecordData.id);
 
       if (error) throw error;
     }
