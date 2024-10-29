@@ -20,8 +20,18 @@ export default function Home() {
     try {
       if (isLogin) {
         // 로그인
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id')
+          .eq('username', username)
+          .single();
+
+        if (!userData) {
+          throw new Error('사용자명 또는 비밀번호가 올바르지 않습니다.');
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
-          email: `${username.toLowerCase()}@work-management.com`,
+          email: `${userData.id}@workmanagement.com`,
           password,
         });
         
@@ -31,7 +41,7 @@ export default function Home() {
 
         router.push('/dashboard');
       } else {
-        // 회원가입
+        // 회원가입 validation
         if (username.length < 2) {
           throw new Error('사용자명은 2자 이상이어야 합니다.');
         }
@@ -51,9 +61,12 @@ export default function Home() {
           throw new Error('이미 존재하는 사용자명입니다.');
         }
 
-        // 새 사용자 생성
+        // 새로운 UUID 생성 (이메일 주소에 사용)
+        const userId = crypto.randomUUID();
+        
+        // 회원가입
         const { data, error: signUpError } = await supabase.auth.signUp({
-          email: `${username.toLowerCase()}@work-management.com`,
+          email: `${userId}@workmanagement.com`,
           password,
           options: {
             data: {
@@ -64,11 +77,15 @@ export default function Home() {
         
         if (signUpError) throw signUpError;
 
+        if (!data.user) {
+          throw new Error('회원가입 중 오류가 발생했습니다.');
+        }
+
         // users 테이블에 사용자 정보 저장
         const { error: userError } = await supabase
           .from('users')
           .insert({
-            id: data.user?.id,
+            id: data.user.id,
             username: username
           });
 
@@ -78,7 +95,7 @@ export default function Home() {
         const { error: penaltyError } = await supabase
           .from('penalty_records')
           .insert({
-            user_id: data.user?.id,
+            user_id: data.user.id,
             accumulated_penalty: 0,
             additional_hours: 10
           });
@@ -88,6 +105,7 @@ export default function Home() {
         router.push('/dashboard');
       }
     } catch (err) {
+      console.error('Auth error:', err);
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
     } finally {
       setLoading(false);
