@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { v4 as uuidv4 } from 'uuid';
 
 export default function Home() {
   const [isLogin, setIsLogin] = useState(true);
@@ -20,20 +19,9 @@ export default function Home() {
 
     try {
       if (isLogin) {
-        // 사용자명으로 사용자 찾기
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('id')
-          .eq('username', username)
-          .single();
-
-        if (userError) {
-          throw new Error('사용자명 또는 비밀번호가 올바르지 않습니다.');
-        }
-
-        // 찾은 사용자 ID로 로그인
+        // 로그인
         const { error } = await supabase.auth.signInWithPassword({
-          email: `${userData.id}@example.com`,
+          email: `${username.toLowerCase()}@work-management.com`,
           password,
         });
         
@@ -48,6 +36,10 @@ export default function Home() {
           throw new Error('사용자명은 2자 이상이어야 합니다.');
         }
 
+        if (password.length < 6) {
+          throw new Error('비밀번호는 6자 이상이어야 합니다.');
+        }
+
         // 이미 존재하는 사용자명인지 확인
         const { data: existingUser } = await supabase
           .from('users')
@@ -60,10 +52,14 @@ export default function Home() {
         }
 
         // 새 사용자 생성
-        const userId = uuidv4();
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: `${userId}@example.com`,
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: `${username.toLowerCase()}@work-management.com`,
           password,
+          options: {
+            data: {
+              username,
+            }
+          }
         });
         
         if (signUpError) throw signUpError;
@@ -72,7 +68,7 @@ export default function Home() {
         const { error: userError } = await supabase
           .from('users')
           .insert({
-            id: userId,
+            id: data.user?.id,
             username: username
           });
 
@@ -82,7 +78,7 @@ export default function Home() {
         const { error: penaltyError } = await supabase
           .from('penalty_records')
           .insert({
-            user_id: userId,
+            user_id: data.user?.id,
             accumulated_penalty: 0,
             additional_hours: 10
           });
