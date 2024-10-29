@@ -70,7 +70,7 @@
  
 @layer base {
   * {
-    @apply border-border;
+    @apply border-stone-200;  /* border-border를 border-stone-200로 변경 */
   }
   body {
     @apply bg-background text-foreground;
