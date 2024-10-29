@@ -16,9 +16,12 @@ export default function Home() {
     setError('');
 
     try {
+      // 한글 사용자명을 영문자로 변환
+      const emailUsername = encodeURIComponent(username);
+      
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({
-          email: `${username}@example.com`,
+          email: `${emailUsername}@example.com`,
           password,
         });
         
@@ -26,11 +29,11 @@ export default function Home() {
         router.push('/dashboard');
       } else {
         const { error } = await supabase.auth.signUp({
-          email: `${username}@example.com`,
+          email: `${emailUsername}@example.com`,
           password,
           options: {
             data: {
-              username,
+              username, // 원래 사용자명 저장
             }
           }
         });
