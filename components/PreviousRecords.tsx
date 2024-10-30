@@ -11,44 +11,38 @@ export default function PreviousRecords() {
   const [loading, setLoading] = useState(false);
 
   const handleViewPreviousRecord = async () => {
+    if (!selectedWeek) {
+      setError('주를 선택해주세요.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setRecords(null);
 
     try {
-      // 1. 로그인 체크
       const userStr = localStorage.getItem('user');
       if (!userStr) {
         throw new Error('로그인이 필요합니다.');
       }
-
-      // 2. 주 선택 확인
-      if (!selectedWeek) {
-        throw new Error('주를 선택해주세요.');
-      }
-
       const user = JSON.parse(userStr);
 
-      // 3. 날짜 형식 변환 (선택된 주의 월요일 구하기)
-      const weekDate = new Date(selectedWeek);
-      const day = weekDate.getDay();
-      const diff = weekDate.getDate() - day + (day === 0 ? -6 : 1);
-      weekDate.setDate(diff);
-      weekDate.setHours(0, 0, 0, 0);
-      
-      const weekStart = weekDate.toISOString().split('T')[0];
+      // PHP 버전과 동일한 방식으로 날짜 처리
+      const weekStart = selectedWeek + '-1'; // input type="week"는 'YYYY-Ww' 형식 반환
+      const weekDate = new Date(weekStart);
+      const formattedDate = weekDate.toISOString().split('T')[0];  // 'YYYY-MM-DD' 형식
 
-      // 4. 해당 주의 근무 기록 조회
       const { data, error: fetchError } = await supabase
         .from('work_records')
         .select('*')
         .eq('user_id', user.id)
-        .eq('week_start', weekStart)
+        .eq('week_start', formattedDate)
         .single();
 
       if (fetchError) {
-        if (fetchError.code === 'PGRST116') {  // 데이터가 없는 경우
-          throw new Error(`${weekStart} 주의 근무 기록이 없습니다.`);
+        if (fetchError.code === 'PGRST116') {
+          // PHP 버전과 동일한 에러 메시지
+          throw new Error(`No record found for the selected week (${formattedDate})`);
         }
         throw fetchError;
       }
@@ -64,11 +58,6 @@ export default function PreviousRecords() {
 
   const formatTime = (minutes: number) => {
     return `${Math.floor(minutes / 60)}시간 ${minutes % 60}분`;
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
   };
 
   return (
@@ -98,27 +87,22 @@ export default function PreviousRecords() {
         )}
 
         {records && (
-          <div>
-            <h3 className="text-lg font-semibold mb-2">
-              {formatDate(records.week_start)} 주 근무 기록
-            </h3>
-            <table className="min-w-full table-auto">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-left">총 근무시간</th>
-                  <th className="px-4 py-2 text-left">남은 근무시간</th>
-                  <th className="px-4 py-2 text-left">근무 상태</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-t">
-                  <td className="px-4 py-2">{formatTime(records.total_work_time)}</td>
-                  <td className="px-4 py-2">{formatTime(records.remaining_time)}</td>
-                  <td className="px-4 py-2">{records.work_status}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <table className="min-w-full table-auto">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="px-4 py-2 text-left">총 근무시간</th>
+                <th className="px-4 py-2 text-left">남은 근무시간</th>
+                <th className="px-4 py-2 text-left">근무 상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t">
+                <td className="px-4 py-2">{formatTime(records.total_work_time)}</td>
+                <td className="px-4 py-2">{formatTime(records.remaining_time)}</td>
+                <td className="px-4 py-2">{records.work_status}</td>
+              </tr>
+            </tbody>
+          </table>
         )}
       </div>
     </div>
