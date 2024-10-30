@@ -12,6 +12,24 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // 주의 시작일을 정확히 계산하는 함수
+  const getWeekStart = () => {
+    const date = new Date();
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    date.setDate(diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const formatDateTime = (date: Date) => {
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toTimeString().split(' ')[0];
+  };
+
   const handleWorkAction = async (action: string, isManual: boolean = false) => {
     try {
       setLoading(true);
@@ -23,60 +41,68 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
       }
       const user = JSON.parse(userStr);
 
-      const currentWeekStart = new Date();
-      currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
-      currentWeekStart.setHours(0, 0, 0, 0);
+      const weekStart = getWeekStart();
+      let clockTime = isManual && manualTime ? new Date(manualTime) : new Date();
 
-      let clockTime = new Date();
-      if (isManual && manualTime) {
-        clockTime = new Date(manualTime);
-      }
-
-      // 현재 근무 기록 조회
-      const { data: workRecord, error: fetchError } = await supabase
+      // 현재 주의 근무 기록 조회
+      const { data: existingRecord, error: fetchError } = await supabase
         .from('work_records')
         .select('*')
         .eq('user_id', user.id)
-        .eq('week_start', currentWeekStart.toISOString())
+        .eq('week_start', weekStart.toISOString())
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError;
-      }
-
       if (action === '출근' || action === '출근 시간 입력') {
-        await supabase
-          .from('work_records')
-          .upsert({
-            user_id: user.id,
-            week_start: currentWeekStart.toISOString(),
-            work_status: '출근',
-            last_clock_in: clockTime.toISOString(),
-            total_work_time: workRecord?.total_work_time || 0,
-            remaining_time: workRecord?.remaining_time || 1200
-          });
+        const updateData = {
+          work_status: '출근',
+          last_clock_in: formatDateTime(clockTime),
+          last_clock_in_time: formatTime(clockTime)
+        };
+
+        if (existingRecord) {
+          const { error: updateError } = await supabase
+            .from('work_records')
+            .update(updateData)
+            .eq('id', existingRecord.id);
+
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('work_records')
+            .insert({
+              user_id: user.id,
+              week_start: weekStart.toISOString(),
+              total_work_time: 0,
+              remaining_time: 1200,
+              ...updateData
+            });
+
+          if (insertError) throw insertError;
+        }
       } else if (action === '퇴근' || action === '퇴근 시간 입력') {
-        if (!workRecord?.last_clock_in) {
+        if (!existingRecord || !existingRecord.last_clock_in) {
           throw new Error('출근 기록이 없습니다.');
         }
 
-        const lastClockIn = new Date(workRecord.last_clock_in);
+        const lastClockIn = new Date(existingRecord.last_clock_in);
         if (clockTime <= lastClockIn) {
-          throw new Error('퇴근 시간은 출근 시간보다 이후여야 합니다.');
+          throw new Error(`퇴근 시간은 마지막 출근 시간(${formatDateTime(lastClockIn)}) 이후여야 합니다.`);
         }
 
         const workDuration = Math.floor((clockTime.getTime() - lastClockIn.getTime()) / (1000 * 60));
-        const newTotalWorkTime = workRecord.total_work_time + workDuration;
+        const newTotalWorkTime = existingRecord.total_work_time + workDuration;
         const newRemainingTime = Math.max(0, 1200 - newTotalWorkTime);
 
-        await supabase
+        const { error: updateError } = await supabase
           .from('work_records')
           .update({
             work_status: '퇴근',
             total_work_time: newTotalWorkTime,
             remaining_time: newRemainingTime
           })
-          .eq('id', workRecord.id);
+          .eq('id', existingRecord.id);
+
+        if (updateError) throw updateError;
       }
 
       onUpdate();
