@@ -12,7 +12,6 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 주의 시작일을 정확히 계산하는 함수
   const getWeekStart = () => {
     const date = new Date();
     const day = date.getDay();
@@ -42,10 +41,10 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
       const user = JSON.parse(userStr);
 
       const weekStart = getWeekStart();
-      const clockTime = isManual && manualTime ? new Date(manualTime) : new Date();  // let을 const로 변경
+      const clockTime = isManual && manualTime ? new Date(manualTime) : new Date();
 
       // 현재 주의 근무 기록 조회
-      const { data: existingRecord } = await supabase  // fetchError 제거
+      const { data: existingRecord } = await supabase
         .from('work_records')
         .select('*')
         .eq('user_id', user.id)
