@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import WorkManagement from '@/components/WorkManagement';
@@ -19,32 +19,59 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+  const checkAuth = () => {
+    const user = localStorage.getItem('user');
+    if (!user) {
       router.push('/');
     }
   };
 
   const fetchData = async () => {
     try {
-      // Fetch all users with their work records and penalty records
-      const { data: users } = await supabase
+      // 모든 사용자 정보 가져오기
+      const { data: users, error: usersError } = await supabase
         .from('users')
-        .select(`
-          *,
-          workRecord:work_records(
-            *
-          ),
-          penaltyRecord:penalty_records(
-            *
-          )
-        `)
-        .eq('workRecord.week_start', getWeekStart());
+        .select('*')
+        .order('username');
 
-      if (users) {
-        setUserData(users as UserWorkStatus[]);
-      }
+      if (usersError) throw usersError;
+
+      // 현재 주의 시작일 계산
+      const currentWeekStart = new Date();
+      currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
+      currentWeekStart.setHours(0, 0, 0, 0);
+
+      // 각 사용자의 근무 기록과 패널티 정보 가져오기
+      const userWorkData = await Promise.all(users.map(async (user) => {
+        const [workRecord, penaltyRecord] = await Promise.all([
+          supabase
+            .from('work_records')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('week_start', currentWeekStart.toISOString())
+            .single(),
+          supabase
+            .from('penalty_records')
+            .select('*')
+            .eq('user_id', user.id)
+            .single()
+        ]);
+
+        return {
+          ...user,
+          workRecord: workRecord.data || {
+            total_work_time: 0,
+            remaining_time: 1200,
+            work_status: '퇴근'
+          },
+          penaltyRecord: penaltyRecord.data || {
+            accumulated_penalty: 0,
+            additional_hours: 10
+          }
+        };
+      }));
+
+      setUserData(userWorkData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -52,15 +79,8 @@ export default function Dashboard() {
     }
   };
 
-  const getWeekStart = () => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    return new Date(now.setDate(diff)).toISOString().split('T')[0];
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    localStorage.removeItem('user');
     router.push('/');
   };
 
@@ -82,7 +102,7 @@ export default function Dashboard() {
 
       <div className="grid gap-8">
         <WorkRecords users={userData} onRefresh={fetchData} />
-        <PenaltyTable users={userData} />
+        <PenaltyTable users={userData} onRefresh={fetchData} />
         <WorkManagement onUpdate={fetchData} />
         <PreviousRecords />
       </div>

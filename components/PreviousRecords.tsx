@@ -16,21 +16,25 @@ export default function PreviousRecords() {
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('로그인이 필요합니다.');
+      }
+      const user = JSON.parse(userStr);
 
       const { data, error: fetchError } = await supabase
         .from('work_records')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .eq('week_start', selectedWeek)
         .single();
 
       if (fetchError) throw fetchError;
       setRecords(data);
       setError('');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      console.error('Error:', err);
+      setError(err instanceof Error ? err.message : '기록을 불러오는데 실패했습니다.');
       setRecords(null);
     }
   };

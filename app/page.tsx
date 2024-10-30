@@ -20,28 +20,27 @@ export default function Home() {
     try {
       if (isLogin) {
         // 로그인
-        const { data: userData } = await supabase
+        const { data: user, error: userError } = await supabase
           .from('users')
-          .select('id')
+          .select('*')
           .eq('username', username)
           .single();
 
-        if (!userData) {
+        if (userError || !user) {
           throw new Error('사용자명 또는 비밀번호가 올바르지 않습니다.');
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
-          email: `${userData.id}@workmanagement.com`,
-          password,
-        });
+        if (password !== user.password) {
+          throw new Error('사용자명 또는 비밀번호가 올바르지 않습니다.');
+        }
+
+        // 세션 설정
+        localStorage.setItem('user', JSON.stringify(user));
         
-        if (error) {
-          throw new Error('사용자명 또는 비밀번호가 올바르지 않습니다.');
-        }
-
+        // 리다이렉트
         router.push('/dashboard');
       } else {
-        // 회원가입 validation
+        // 회원가입 유효성 검사
         if (username.length < 2) {
           throw new Error('사용자명은 2자 이상이어야 합니다.');
         }
@@ -50,7 +49,7 @@ export default function Home() {
           throw new Error('비밀번호는 6자 이상이어야 합니다.');
         }
 
-        // 이미 존재하는 사용자명인지 확인
+        // 중복 사용자 확인
         const { data: existingUser } = await supabase
           .from('users')
           .select('username')
@@ -61,47 +60,62 @@ export default function Home() {
           throw new Error('이미 존재하는 사용자명입니다.');
         }
 
-        // 새로운 UUID 생성 (이메일 주소에 사용)
-        const userId = crypto.randomUUID();
-        
-        // 회원가입
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: `${userId}@workmanagement.com`,
-          password,
-          options: {
-            data: {
-              username,
-            }
-          }
-        });
-        
-        if (signUpError) throw signUpError;
-
-        if (!data.user) {
-          throw new Error('회원가입 중 오류가 발생했습니다.');
-        }
-
-        // users 테이블에 사용자 정보 저장
-        const { error: userError } = await supabase
+        // 새 사용자 생성
+        const { data: newUser, error: userError } = await supabase
           .from('users')
           .insert({
-            id: data.user.id,
-            username: username
-          });
+            username,
+            password,
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
 
-        if (userError) throw userError;
+        if (userError || !newUser) {
+          throw new Error('회원가입 중 오류가 발생했습니다.');
+        }
 
         // 초기 패널티 레코드 생성
         const { error: penaltyError } = await supabase
           .from('penalty_records')
           .insert({
-            user_id: data.user.id,
+            user_id: newUser.id,
             accumulated_penalty: 0,
             additional_hours: 10
           });
-        
-        if (penaltyError) throw penaltyError;
-        
+
+        if (penaltyError) {
+          // 실패 시 생성된 사용자 삭제
+          await supabase.from('users').delete().eq('id', newUser.id);
+          throw new Error('회원가입 중 오류가 발생했습니다.');
+        }
+
+        // 초기 work record 생성
+        const currentWeekStart = new Date();
+        currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
+        currentWeekStart.setHours(0, 0, 0, 0);
+
+        const { error: workError } = await supabase
+          .from('work_records')
+          .insert({
+            user_id: newUser.id,
+            week_start: currentWeekStart.toISOString(),
+            total_work_time: 0,
+            remaining_time: 1200,
+            work_status: '퇴근'
+          });
+
+        if (workError) {
+          // 실패 시 생성된 데이터 삭제
+          await supabase.from('penalty_records').delete().eq('user_id', newUser.id);
+          await supabase.from('users').delete().eq('id', newUser.id);
+          throw new Error('회원가입 중 오류가 발생했습니다.');
+        }
+
+        // 세션 설정
+        localStorage.setItem('user', JSON.stringify(newUser));
+
+        // 리다이렉트
         router.push('/dashboard');
       }
     } catch (err) {

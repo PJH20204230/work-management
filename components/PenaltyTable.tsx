@@ -1,73 +1,55 @@
-import { useState, useEffect } from 'react';
-import { UserWorkStatus } from '@/types';
+'use client';
+
+import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { UserWorkStatus } from '@/types';
 
 interface PenaltyTableProps {
   users: UserWorkStatus[];
+  onRefresh: () => void;
 }
 
-export default function PenaltyTable({ users }: PenaltyTableProps) {
+export default function PenaltyTable({ users, onRefresh }: PenaltyTableProps) {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-  // 현재 로그인한 사용자의 ID를 가져오는 함수
-  useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setCurrentUserId(session.user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
   const handleSettlement = async (userId: string, username: string) => {
     try {
-      // 현재 사용자가 로그인하지 않았거나, 자신의 벌금이 아닌 경우 정산 불가
-      if (!currentUserId || userId !== currentUserId) {
-        setError('자신의 벌금만 정산할 수 있습니다.');
-        return;
+      if (!currentUser.id || userId !== currentUser.id) {
+        throw new Error('자신의 벌금만 정산할 수 있습니다.');
       }
 
       setLoading(userId);
       setError(null);
 
-      const response = await fetch('/api/penalty/settle', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId }),
-      });
+      const { error: updateError } = await supabase
+        .from('penalty_records')
+        .update({ accumulated_penalty: 0 })
+        .eq('user_id', userId);
 
-      if (!response.ok) {
-        throw new Error('정산 처리 중 오류가 발생했습니다.');
-      }
+      if (updateError) throw updateError;
 
-      // 페이지 새로고침으로 데이터 갱신
-      window.location.reload();
-    } catch (err: any) {
-      setError(`${username}님의 정산 처리 중 오류가 발생했습니다.`);
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${username}님의 정산 처리 중 오류가 발생했습니다.`);
       console.error('Settlement error:', err);
     } finally {
       setLoading(null);
     }
   };
 
-  // 버튼 활성화 여부를 확인하는 함수
   const isSettlementEnabled = (userId: string, penaltyAmount: number = 0) => {
     return (
-      currentUserId === userId && // 현재 사용자의 벌금인지
-      penaltyAmount > 0 && // 벌금이 있는지
-      loading !== userId // 처리 중이 아닌지
+      currentUser.id === userId && 
+      penaltyAmount > 0 && 
+      loading !== userId
     );
   };
 
-  // 버튼 텍스트를 반환하는 함수
   const getButtonText = (userId: string, penaltyAmount: number = 0) => {
     if (loading === userId) return '처리중...';
-    if (currentUserId !== userId) return '정산 불가';
+    if (currentUser.id !== userId) return '정산 불가';
     if (penaltyAmount <= 0) return '정산 완료';
     return '정산하기';
   };

@@ -17,10 +17,11 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
       setLoading(true);
       setError('');
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
         throw new Error('로그인이 필요합니다.');
       }
+      const user = JSON.parse(userStr);
 
       const currentWeekStart = new Date();
       currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
@@ -31,59 +32,60 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
         clockTime = new Date(manualTime);
       }
 
-      if (action.includes('출근')) {
-        const { error: updateError } = await supabase
+      // 현재 근무 기록 조회
+      const { data: workRecord, error: fetchError } = await supabase
+        .from('work_records')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('week_start', currentWeekStart.toISOString())
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      if (action === '출근' || action === '출근 시간 입력') {
+        await supabase
           .from('work_records')
           .upsert({
-            user_id: session.user.id,
+            user_id: user.id,
             week_start: currentWeekStart.toISOString(),
             work_status: '출근',
             last_clock_in: clockTime.toISOString(),
-            last_clock_in_time: clockTime.toTimeString().split(' ')[0]
+            total_work_time: workRecord?.total_work_time || 0,
+            remaining_time: workRecord?.remaining_time || 1200
           });
-
-        if (updateError) throw updateError;
-      } else if (action.includes('퇴근')) {
-        // 현재 근무 기록 조회
-        const { data: currentRecord, error: fetchError } = await supabase
-          .from('work_records')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .eq('week_start', currentWeekStart.toISOString())
-          .single();
-
-        if (fetchError) throw fetchError;
-        if (!currentRecord.last_clock_in) {
+      } else if (action === '퇴근' || action === '퇴근 시간 입력') {
+        if (!workRecord?.last_clock_in) {
           throw new Error('출근 기록이 없습니다.');
         }
 
-        const lastClockIn = new Date(currentRecord.last_clock_in);
+        const lastClockIn = new Date(workRecord.last_clock_in);
         if (clockTime <= lastClockIn) {
           throw new Error('퇴근 시간은 출근 시간보다 이후여야 합니다.');
         }
 
         const workDuration = Math.floor((clockTime.getTime() - lastClockIn.getTime()) / (1000 * 60));
-        const newTotalWorkTime = currentRecord.total_work_time + workDuration;
-        const newRemainingTime = Math.max(0, 1200 - newTotalWorkTime);  // 20시간 = 1200분
+        const newTotalWorkTime = workRecord.total_work_time + workDuration;
+        const newRemainingTime = Math.max(0, 1200 - newTotalWorkTime);
 
-        const { error: updateError } = await supabase
+        await supabase
           .from('work_records')
           .update({
             work_status: '퇴근',
             total_work_time: newTotalWorkTime,
             remaining_time: newRemainingTime
           })
-          .eq('id', currentRecord.id);
-
-        if (updateError) throw updateError;
+          .eq('id', workRecord.id);
       }
 
       onUpdate();
       if (isManual) {
         setManualTime('');
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      console.error('Work action error:', err);
+      setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
