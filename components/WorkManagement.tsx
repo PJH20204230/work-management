@@ -42,10 +42,10 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
       const user = JSON.parse(userStr);
 
       const weekStart = getWeekStart();
-      let clockTime = isManual && manualTime ? new Date(manualTime) : new Date();
+      const clockTime = isManual && manualTime ? new Date(manualTime) : new Date();  // let을 const로 변경
 
       // 현재 주의 근무 기록 조회
-      const { data: existingRecord, error: fetchError } = await supabase
+      const { data: existingRecord } = await supabase  // fetchError 제거
         .from('work_records')
         .select('*')
         .eq('user_id', user.id)
