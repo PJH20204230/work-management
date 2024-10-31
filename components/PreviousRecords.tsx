@@ -15,7 +15,6 @@ export default function PreviousRecords() {
       setError('주를 선택해주세요.');
       return;
     }
-
     setLoading(true);
     setError('');
     setRecords(null);
@@ -27,10 +26,15 @@ export default function PreviousRecords() {
       }
       const user = JSON.parse(userStr);
 
-      // PHP 버전과 동일한 방식으로 날짜 처리
-      const weekStart = selectedWeek + '-1'; // input type="week"는 'YYYY-Ww' 형식 반환
-      const weekDate = new Date(weekStart);
-      const formattedDate = weekDate.toISOString().split('T')[0];  // 'YYYY-MM-DD' 형식
+      // 날짜 처리 로직 수정
+      const [year, week] = selectedWeek.split('-W');
+      const weekStart = new Date(parseInt(year), 0, 1 + (parseInt(week) - 1) * 7);
+      const day = weekStart.getDay();
+      const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1); // 월요일로 조정
+      weekStart.setDate(diff);
+      weekStart.setHours(0, 0, 0, 0);
+
+      const formattedDate = weekStart.toISOString().split('T')[0];
 
       const { data, error: fetchError } = await supabase
         .from('work_records')
@@ -41,8 +45,7 @@ export default function PreviousRecords() {
 
       if (fetchError) {
         if (fetchError.code === 'PGRST116') {
-          // PHP 버전과 동일한 에러 메시지
-          throw new Error(`No record found for the selected week (${formattedDate})`);
+          throw new Error(`해당 주차(${formattedDate})의 근무 기록이 없습니다.`);
         }
         throw fetchError;
       }
