@@ -26,7 +26,7 @@ export default function PreviousRecords() {
       }
       const user = JSON.parse(userStr);
 
-      // 날짜 처리 로직 수정
+      // 날짜 처리 로직
       const [year, week] = selectedWeek.split('-W');
       const weekStart = new Date(parseInt(year), 0, 1 + (parseInt(week) - 1) * 7);
       const day = weekStart.getDay();

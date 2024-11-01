@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import WorkManagement from '@/components/WorkManagement';
@@ -8,6 +8,7 @@ import WorkRecords from '@/components/WorkRecords';
 import PreviousRecords from '@/components/PreviousRecords';
 import PenaltyTable from '@/components/PenaltyTable';
 import type { UserWorkStatus } from '@/types';
+import { getWeekStart } from '@/lib/dateUtils';
 
 export default function Dashboard() {
   const [userData, setUserData] = useState<UserWorkStatus[]>([]);
@@ -28,50 +29,26 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
+      const weekStart = getWeekStart();
+      
       // 모든 사용자 정보 가져오기
       const { data: users, error: usersError } = await supabase
         .from('users')
-        .select('*')
-        .order('username');
+        .select(`
+          *,
+          workRecord:work_records(
+            *
+          ),
+          penaltyRecord:penalty_records(
+            *
+          )
+        `)
+        .eq('workRecord.week_start', weekStart.toISOString());
 
       if (usersError) throw usersError;
-
-      // 현재 주의 시작일 계산
-      const currentWeekStart = new Date();
-      currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
-      currentWeekStart.setHours(0, 0, 0, 0);
-
-      // 각 사용자의 근무 기록과 패널티 정보 가져오기
-      const userWorkData = await Promise.all(users.map(async (user) => {
-        const [workRecord, penaltyRecord] = await Promise.all([
-          supabase
-            .from('work_records')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('week_start', currentWeekStart.toISOString())
-            .single(),
-          supabase
-            .from('penalty_records')
-            .select('*')
-            .eq('user_id', user.id)
-            .single()
-        ]);
-
-        return {
-          ...user,
-          workRecord: workRecord.data || {
-            total_work_time: 0,
-            remaining_time: 1200,
-            work_status: '퇴근'
-          },
-          penaltyRecord: penaltyRecord.data || {
-            accumulated_penalty: 0,
-            additional_hours: 10
-          }
-        };
-      }));
-
-      setUserData(userWorkData);
+      if (users) {
+        setUserData(users as UserWorkStatus[]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {

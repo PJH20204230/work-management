@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
+import { getWeekStart } from '@/lib/dateUtils';
 
 export async function POST() {
   try {
     const supabase = getServiceSupabase();
-    const currentWeekStart = new Date();
-    // 월요일을 주의 시작으로 설정
-    const day = currentWeekStart.getDay();
-    const diff = currentWeekStart.getDate() - day + (day === 0 ? -6 : 1);
-    currentWeekStart.setDate(diff);
-    currentWeekStart.setHours(0, 0, 0, 0);
-
+    const currentWeekStart = getWeekStart();
     const previousWeekStart = new Date(currentWeekStart);
     previousWeekStart.setDate(previousWeekStart.getDate() - 7);
 

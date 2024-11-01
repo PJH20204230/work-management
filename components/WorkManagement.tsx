@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getWeekStart, formatDateTime, formatTime } from '@/lib/dateUtils';
 
 interface WorkManagementProps {
   onUpdate: () => void;
@@ -11,23 +12,6 @@ export default function WorkManagement({ onUpdate }: WorkManagementProps) {
   const [manualTime, setManualTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const getWeekStart = () => {
-    const date = new Date();
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    date.setDate(diff);
-    date.setHours(0, 0, 0, 0);
-    return date;
-  };
-
-  const formatDateTime = (date: Date) => {
-    return date.toISOString().slice(0, 19).replace('T', ' ');
-  };
-
-  const formatTime = (date: Date) => {
-    return date.toTimeString().split(' ')[0];
-  };
 
   const handleWorkAction = async (action: string, isManual: boolean = false) => {
     try {
