@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { WorkRecord } from '@/types';
+import { getWeekStart, formatDateTime } from '@/lib/dateUtils';  // dateUtils import 추가
 
 export default function PreviousRecords() {
   const [selectedWeek, setSelectedWeek] = useState('');
@@ -30,7 +31,7 @@ export default function PreviousRecords() {
       const [year, week] = selectedWeek.split('-W');
       const weekStart = new Date(parseInt(year), 0, 1 + (parseInt(week) - 1) * 7);
       const day = weekStart.getDay();
-      const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1); // 월요일로 조정
+      const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);  // 월요일 기준으로 조정
       weekStart.setDate(diff);
       weekStart.setHours(0, 0, 0, 0);
 
